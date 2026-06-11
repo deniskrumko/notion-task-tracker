@@ -3,6 +3,7 @@ import tomllib
 from pathlib import Path
 
 from rich.console import Console, Group
+from rich.table import Table
 from rich.text import Text
 
 from notion.client import NotionClient, NotionError
@@ -10,6 +11,7 @@ from notion.resources import Task, TaskTrackerConfig
 from task_tracker.client import TaskTrackerClient
 from task_tracker.resources import (
     TaskAddResult,
+    TaskDeleteResult,
     TaskOverrides,
     parse_date_offset,
     parse_github_pull_request_url,
@@ -27,22 +29,14 @@ def main() -> int:
 
     try:
         config = load_config()
-        overrides = TaskOverrides(
-            name=args.name,
-            level=args.level,
-            status=args.status,
-            until=parse_date_offset(args.until) if args.until else None,
-            url=args.url,
-        )
-
         with NotionClient.from_config(config) as notion_client:
             task_tracker_client = TaskTrackerClient(notion_client)
-            result = run_command(task_tracker_client, args, overrides)
+            result = run_command(task_tracker_client, args, config)
     except (NotionError, ValueError) as exc:
         error_console.print(str(exc), style="bold red")
         return 1
 
-    print_task_result(result)
+    print_command_result(result, show_ids=getattr(args, "id", False))
     return 0
 
 
@@ -56,6 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_common_flags(subparsers.add_parser("pr", help="Add GitHub pull request task"))
     subparsers.choices["pr"].add_argument("url")
+
+    delete_parser = subparsers.add_parser("delete", help="Delete task by internal ID")
+    delete_parser.add_argument("task_ids", nargs="+")
+
+    list_parser = subparsers.add_parser("list", help="List tasks")
+    list_parser.add_argument("--view")
+    list_parser.add_argument("--all", action="store_true")
+    list_parser.add_argument("-i", "--id", action="store_true")
 
     return parser
 
@@ -82,19 +84,67 @@ def load_config(path: Path = CONFIG_PATH) -> TaskTrackerConfig:
 def run_command(
     task_tracker_client: TaskTrackerClient,
     args: argparse.Namespace,
-    overrides: TaskOverrides,
-) -> TaskAddResult:
+    config: TaskTrackerConfig,
+) -> TaskAddResult | TaskDeleteResult | list[Task]:
     """Execute the requested CLI command."""
     if args.command == "add":
+        overrides = parse_task_overrides(args)
         return task_tracker_client.add_auto(" ".join(args.value), overrides)
 
     if args.command == "pr":
+        overrides = parse_task_overrides(args)
         pull_request = parse_github_pull_request_url(args.url)
         if pull_request is None:
             raise ValueError("Expected a GitHub pull request URL.")
         return task_tracker_client.add_pull_request(pull_request, overrides)
 
+    if args.command == "delete":
+        return task_tracker_client.delete_tasks(args.task_ids)
+
+    if args.command == "list":
+        return task_tracker_client.list_tasks(resolve_view_name(config, args.view, args.all))
+
     raise ValueError(f"Unsupported command: {args.command}")
+
+
+def parse_task_overrides(args: argparse.Namespace) -> TaskOverrides:
+    """Parse task override fields from CLI arguments."""
+    return TaskOverrides(
+        name=args.name,
+        level=args.level,
+        status=args.status,
+        until=parse_date_offset(args.until) if args.until else None,
+        url=args.url,
+    )
+
+
+def resolve_view_name(
+    config: TaskTrackerConfig, view_key: str | None, all_tasks: bool
+) -> str | None:
+    """Resolve a CLI view key into a Notion view display name."""
+    if all_tasks:
+        return None
+    if view_key is not None:
+        view = config.views.get(view_key)
+        return view.name if view else view_key
+
+    for view in config.views.values():
+        if view.default:
+            return view.name
+
+    return None
+
+
+def print_command_result(
+    result: TaskAddResult | TaskDeleteResult | list[Task], show_ids: bool = False
+) -> None:
+    """Print a command result."""
+    if isinstance(result, list):
+        print_task_list(result, show_ids)
+    elif isinstance(result, TaskDeleteResult):
+        print_task_delete_result(result)
+    else:
+        print_task_result(result)
 
 
 def print_task_result(result: TaskAddResult) -> None:
@@ -104,6 +154,40 @@ def print_task_result(result: TaskAddResult) -> None:
     else:
         console.print("⚠️  Task already exists\n", style="bold yellow")
     console.print(task_lines(result.task))
+
+
+def print_task_delete_result(result: TaskDeleteResult) -> None:
+    """Print task deletion result."""
+    message = "Task deleted" if len(result.tasks) == 1 else "Tasks deleted"
+    console.print(f"{message}\n", style="bold green")
+    for task in result.tasks:
+        console.print(task_lines(task))
+
+
+def print_task_list(tasks: list[Task], show_ids: bool = False) -> None:
+    """Print task list result."""
+    if not tasks:
+        console.print("No tasks found", style="bold yellow")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Task", overflow="fold")
+    table.add_column("Details", no_wrap=True)
+    table.add_column("URL", overflow="fold")
+
+    for task in tasks:
+        table.add_row(task_name_cell(task, show_ids), task_badges(task), task.url or "")
+
+    console.print(table)
+
+
+def task_name_cell(task: Task, show_id: bool = False) -> Text:
+    """Build task list name cell."""
+    text = Text(task.name, style="bold")
+    if show_id:
+        text.append("\n")
+        text.append(task.id, style="grey50")
+    return text
 
 
 def task_lines(task: Task) -> Group:
@@ -123,25 +207,24 @@ def task_badges(task: Task) -> Text:
     if task.level is not None:
         append_badge(badges, task.level.value, level_style(task.level.value))
     append_badge(badges, task.status.value, status_style(task.status.value))
-    append_badge(
-        badges,
-        task.until.isoformat() if task.until else "No until",
-        "bold black on magenta",
-    )
+    if task.until is not None:
+        append_badge(badges, task.until.isoformat(), "bold black on magenta")
     return badges
 
 
 def append_badge(text: Text, label: str, style: str) -> None:
     """Append a styled badge to text."""
+    if text:
+        text.append(" ")
     text.append(f" {label} ", style=style)
 
 
 def level_style(level: str) -> str:
     """Return badge style for a task level."""
     return {
-        "Low": "bold white on green",
+        "Low": "bold black on green",
         "Medium": "bold black on yellow",
-        "High": "bold white on red",
+        "High": "bold black on red",
     }.get(level, "bold white on cyan")
 
 
@@ -149,10 +232,10 @@ def status_style(status: str) -> str:
     """Return badge style for a task status."""
     return {
         "TODO": "bold white on grey23",
-        "Planning": "bold white on magenta",
+        "Planning": "bold black on magenta",
         "In progress": "bold white on blue",
         "In review": "bold black on yellow",
-        "Done": "bold white on green",
+        "Done": "bold black on green",
     }.get(status, "bold white on cyan")
 
 

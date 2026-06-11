@@ -7,14 +7,12 @@ Notion-based task tracker automatization
 This is how I manage my current task tracker:
 
 - `Task name`: str - task name. Required.
-- `Level`: str - task level (Low, Medium, High). Default: `Medium`.
+- `Level`: str - task level (Low, Medium, High). Default: `None`.
 - `Status`: str - task status (TODO, Planning, In Progress, In review, Done). Default: `TODO`.
 - `Until`: date - task deadline. Default: `None`.
 - `URL`: str - task URL (Github, Jira). Default: `None`.
 
-# CLI Usage
-
-## Configuration
+# Configuration
 
 Create `~/.config/notion-task-tracker/config.toml`:
 
@@ -29,12 +27,39 @@ id = "<notion-database-id>"
 name = "Task Tracker"
 ```
 
+# CLI Usage
+
+## List tasks
+
+List all tasks in the task tracker:
+
+```bash
+uv run cli list
+```
+
+Params:
+- `--view <view>`: view to use (specified in config)
+
+## Delete tasks
+
+Delete one or more tasks by their internal Notion page IDs:
+
+```bash
+uv run cli delete <task_id> [<task_id> ...]
+```
+
+If the task ID does not exist, the command prints an error:
+
+```text
+Task "<task_id>" was not found.
+```
+
 ## Auto-adding tasks
 
 Add task to task tracker with auto-detection algorithm:
 
 ```bash
-notion-task-tracker add <any>
+uv run cli add <any>
 ```
 
 Algorithm:
@@ -46,10 +71,10 @@ Algorithm:
 Add pull request to task tracker in "TODO" state if it doesn't exist with PR link in URL field:
 
 ```bash
-notion-task-tracker pr https://github.com/example/pull/17
+uv run cli pr https://github.com/example/pull/17
 ```
 
-# Global CLI params
+# Global CLI params for creating tasks
 
 For each command you can specify the following global CLI params and it will override auto-detection:
 

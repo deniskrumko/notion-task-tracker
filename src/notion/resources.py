@@ -37,11 +37,19 @@ class DatabaseConfig(BaseModel):
     name: str
 
 
+class ViewConfig(BaseModel):
+    """Runtime settings for a configured Notion database view."""
+
+    name: str
+    default: bool = False
+
+
 class TaskTrackerConfig(BaseModel):
     """Runtime settings for the task tracker application."""
 
     notion: NotionConfig
     database: DatabaseConfig
+    views: dict[str, ViewConfig] = Field(default_factory=dict)
 
 
 class TaskCreate(BaseModel):
@@ -57,7 +65,13 @@ class TaskCreate(BaseModel):
     @classmethod
     def strip_name(cls, value: str) -> str:
         """Normalize task name before validation."""
-        return value.strip()
+        value = value.strip()
+
+        # Capitalize first letter if lowercase
+        if value[0].islower():
+            value = value[0].upper() + value[1:]
+
+        return value
 
     @field_validator("url")
     @classmethod
@@ -65,6 +79,7 @@ class TaskCreate(BaseModel):
         """Normalize optional task URL before validation."""
         if value is None:
             return None
+
         value = value.strip()
         return value or None
 

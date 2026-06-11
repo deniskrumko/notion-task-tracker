@@ -25,6 +25,21 @@ class MockNotionClient(ABCNotionClient):
         self.tasks.append(created)
         return created
 
+    def delete_task(self, task_id: str) -> Task | None:
+        """Delete a task by internal ID."""
+        for index, task in enumerate(self.tasks):
+            if task.id == task_id:
+                return self.tasks.pop(index)
+        return None
+
     def find_task_by_url(self, url: str) -> Task | None:
         """Find a task by URL field."""
         return next((task for task in self.tasks if task.url == url), None)
+
+    def list_tasks(self) -> list[Task]:
+        """List all tasks in the tracker."""
+        return list(self.tasks)
+
+    def list_tasks_by_view(self, view_name: str) -> list[Task]:
+        """List tasks through a configured Notion view."""
+        return [task for task in self.tasks if view_name in task.name]

@@ -46,6 +46,17 @@ class TaskAddResult(BaseModel):
     created: bool
 
 
+class TaskDeleteResult(BaseModel):
+    """Result of deleting tasks."""
+
+    tasks: list[Task]
+
+    @property
+    def task(self) -> Task:
+        """Return the first deleted task."""
+        return self.tasks[0]
+
+
 def parse_date_offset(value: str) -> date:
     """Parse ISO date or relative day offset."""
     try:
