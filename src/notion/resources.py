@@ -21,6 +21,29 @@ class TaskStatus(StrEnum):
     IN_REVIEW = "In review"
     DONE = "Done"
 
+    @classmethod
+    def from_value(cls, value: str) -> "TaskStatus":
+        value = value.strip().lower()
+
+        shortcuts: dict[str, TaskStatus] = {
+            "t": cls.TODO,
+            "td": cls.TODO,
+            "p": cls.PLANNING,
+            "ip": cls.IN_PROGRESS,
+            "ir": cls.IN_REVIEW,
+            "d": cls.DONE,
+        }
+
+        if value in shortcuts:
+            return shortcuts[value]
+
+        for status in cls:
+            if status.value.lower() == value:
+                return status
+
+        allowed = ", ".join(status.value for status in cls)
+        raise ValueError(f"Invalid status {value!r}. Allowed values: {allowed}.")
+
 
 class NotionConfig(BaseModel):
     """Runtime settings for connecting to the Notion API."""

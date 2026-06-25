@@ -121,9 +121,9 @@ def parse_level(value: str) -> TaskLevel:
 
 def parse_status(value: str) -> TaskStatus:
     """Parse task status value."""
-    normalized = value.strip().lower()
-    for status in TaskStatus:
-        if status.value.lower() == normalized:
-            return status
-    allowed = ", ".join(status.value for status in TaskStatus)
-    raise ValueError(f"Invalid status {value!r}. Allowed values: {allowed}.")
+    status = TaskStatus.from_value(value)
+    if not status:
+        allowed = ", ".join(status.value for status in TaskStatus)
+        raise ValueError(f"Invalid status {value!r}. Allowed values: {allowed}.")
+
+    return status
