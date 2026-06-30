@@ -16,11 +16,13 @@ class TaskTrackerClient:
         """Initialize class instance."""
         self._notion_client = notion_client
 
-    def add_auto(self, value: str, overrides: TaskOverrides) -> TaskAddResult:
+    def add_auto(
+        self, value: str, overrides: TaskOverrides, *, force: bool = False
+    ) -> TaskAddResult:
         """Add a task using automatic input detection."""
         pull_request = parse_github_pull_request_url(value)
         if pull_request is not None:
-            return self.add_pull_request(pull_request, overrides)
+            return self.add_pull_request(pull_request, overrides, force=force)
 
         return TaskAddResult(
             task=self._notion_client.create_task(
@@ -37,11 +39,14 @@ class TaskTrackerClient:
         self,
         pull_request: PullRequestRef,
         overrides: TaskOverrides,
+        *,
+        force: bool = False,
     ) -> TaskAddResult:
         """Add a pull request task if it does not already exist."""
-        existing = self._notion_client.find_task_by_url(pull_request.url)
-        if existing is not None:
-            return TaskAddResult(task=existing, created=False)
+        if not force:
+            existing = self._notion_client.find_task_by_url(pull_request.url)
+            if existing is not None:
+                return TaskAddResult(task=existing, created=False)
 
         return TaskAddResult(
             task=self._notion_client.create_task(

@@ -69,6 +69,7 @@ def add_common_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-s", "--status")
     parser.add_argument("-u", "--until")
     parser.add_argument("--url")
+    parser.add_argument("--force", action="store_true")
 
 
 def load_config(path: Path = CONFIG_PATH) -> TaskTrackerConfig:
@@ -89,14 +90,14 @@ def run_command(
     """Execute the requested CLI command."""
     if args.command == "add":
         overrides = parse_task_overrides(args)
-        return task_tracker_client.add_auto(" ".join(args.value), overrides)
+        return task_tracker_client.add_auto(" ".join(args.value), overrides, force=args.force)
 
     if args.command == "pr":
         overrides = parse_task_overrides(args)
         pull_request = parse_github_pull_request_url(args.url)
         if pull_request is None:
             raise ValueError("Expected a GitHub pull request URL.")
-        return task_tracker_client.add_pull_request(pull_request, overrides)
+        return task_tracker_client.add_pull_request(pull_request, overrides, force=args.force)
 
     if args.command == "delete":
         return task_tracker_client.delete_tasks(args.task_ids)
@@ -152,7 +153,10 @@ def print_task_result(result: TaskAddResult) -> None:
     if result.created:
         console.print("✅  Task created\n", style="bold green")
     else:
-        console.print("⚠️  Task already exists\n", style="bold yellow")
+        console.print(
+            "⚠️  Task already exists. Use --force to create it anyway.\n",
+            style="bold yellow",
+        )
     console.print(task_lines(result.task))
 
 

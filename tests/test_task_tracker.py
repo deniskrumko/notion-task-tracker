@@ -12,6 +12,7 @@ from app.cli import (
     build_parser,
     load_config,
     print_task_list,
+    print_task_result,
     resolve_view_name,
     task_badges,
 )
@@ -34,7 +35,12 @@ from notion.resources import (
     ViewConfig,
 )
 from task_tracker.client import TaskTrackerClient, build_task
-from task_tracker.resources import TaskOverrides, parse_date_offset, parse_github_pull_request_url
+from task_tracker.resources import (
+    TaskAddResult,
+    TaskOverrides,
+    parse_date_offset,
+    parse_github_pull_request_url,
+)
 
 
 def test_parse_github_pull_request_url() -> None:
@@ -103,6 +109,22 @@ def test_add_command_accepts_unquoted_task_name() -> None:
 
     assert args.command == "add"
     assert args.value == ["hello", "world"]
+
+
+def test_add_command_accepts_force_flag() -> None:
+    """Parse force flag for auto-detected task creation."""
+    args = build_parser().parse_args(["add", "--force", "https://github.com/a/b/pull/1"])
+
+    assert args.command == "add"
+    assert args.force is True
+
+
+def test_pr_command_accepts_force_flag() -> None:
+    """Parse force flag for pull request task creation."""
+    args = build_parser().parse_args(["pr", "--force", "https://github.com/a/b/pull/1"])
+
+    assert args.command == "pr"
+    assert args.force is True
 
 
 def test_list_command_accepts_view_key() -> None:
@@ -324,6 +346,32 @@ def test_add_pull_request_returns_existing_task() -> None:
     assert notion_client.tasks == [existing]
 
 
+def test_add_pull_request_force_creates_duplicate_task() -> None:
+    """Create a pull request task even when the URL already exists."""
+    existing = Task(
+        id="existing",
+        name="Existing PR",
+        level=TaskLevel.MEDIUM,
+        status=TaskStatus.TODO,
+        url="https://github.com/example/repo/pull/17",
+    )
+    notion_client = MockNotionClient(tasks=[existing])
+    client = TaskTrackerClient(notion_client)
+    pull_request = parse_github_pull_request_url(existing.url or "")
+
+    assert pull_request is not None
+    result = client.add_pull_request(
+        pull_request,
+        TaskOverrides(name="New name"),
+        force=True,
+    )
+
+    assert result.created is True
+    assert result.task.name == "New name"
+    assert result.task.url == existing.url
+    assert notion_client.tasks == [existing, result.task]
+
+
 def test_delete_task_removes_existing_task() -> None:
     """Delete an existing task by internal ID."""
     existing = Task(id="task-id", name="Write docs", status=TaskStatus.TODO)
@@ -400,6 +448,25 @@ def test_print_task_list_shows_ids_when_requested(monkeypatch: pytest.MonkeyPatc
     assert "ID" not in rendered
     assert "task-id" in rendered
     assert "Write docs" in rendered
+
+
+def test_print_task_result_suggests_force_for_existing_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Print force flag hint for an existing task."""
+    output = StringIO()
+    monkeypatch.setattr(
+        cli_module,
+        "console",
+        Console(file=output, force_terminal=False, width=120),
+    )
+    task = Task(id="task-id", name="Write docs", status=TaskStatus.TODO)
+
+    print_task_result(TaskAddResult(task=task, created=False))
+
+    rendered = output.getvalue()
+    assert "Task already exists" in rendered
+    assert "Use --force to create it anyway" in rendered
 
 
 def test_page_to_task_accepts_notion_in_progress_status() -> None:
