@@ -25,7 +25,7 @@ def mock_jira_client() -> MockJiraClient:
                         "priority": {"name": "Major"},
                     },
                 },
-                url="https://jira.kolesa-team.org/browse/ML-2100",
+                url="https://jira.example-team.org/browse/ML-2100",
             )
         ]
     )

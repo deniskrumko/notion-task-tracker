@@ -69,7 +69,7 @@ api_token = "secret"
 api_version = "2022-06-28"
 
 [jira]
-base_url = "https://jira.kolesa-team.org/"
+base_url = "https://jira.example-team.org/"
 api_token = "jira-secret"
 
 [database]
@@ -92,7 +92,7 @@ name = "Разобрать"
     assert config.notion.api_token == "secret"
     assert config.notion.api_version == "2022-06-28"
     assert config.jira is not None
-    assert config.jira.base_url == "https://jira.kolesa-team.org/"
+    assert config.jira.base_url == "https://jira.example-team.org/"
     assert config.jira.api_token == "jira-secret"
     assert config.database.id == "database-id"
     assert config.database.name == "Task Tracker"
@@ -215,27 +215,27 @@ def test_resolve_view_name_ignores_views_for_all_flag() -> None:
 def test_parse_self_hosted_github_pull_request_url() -> None:
     """Parse a self-hosted GitHub pull request URL."""
     pull_request = parse_github_pull_request_url(
-        "https://github.kolesa-team.org/ml/kolesa-rec-sys/pull/17"
+        "https://github.example-team.org/ml/example-service/pull/17"
     )
 
     assert pull_request is not None
     assert pull_request.owner == "ml"
-    assert pull_request.repo == "kolesa-rec-sys"
+    assert pull_request.repo == "example-service"
     assert pull_request.number == 17
-    assert pull_request.task_name == "PR #17 ml/kolesa-rec-sys"
+    assert pull_request.task_name == "PR #17 ml/example-service"
 
 
 def test_parse_gitlab_merge_request_url() -> None:
     """Parse a GitLab merge request URL."""
     pull_request = parse_github_pull_request_url(
-        "https://gitlab.example.com/ml/platform/kolesa-rec-sys/-/merge_requests/17"
+        "https://gitlab.example.com/ml/platform/example-service/-/merge_requests/17"
     )
 
     assert pull_request is not None
     assert pull_request.owner == "ml/platform"
-    assert pull_request.repo == "kolesa-rec-sys"
+    assert pull_request.repo == "example-service"
     assert pull_request.number == 17
-    assert pull_request.task_name == "PR #17 ml/platform/kolesa-rec-sys"
+    assert pull_request.task_name == "PR #17 ml/platform/example-service"
 
 
 def test_parse_github_pull_request_url_rejects_non_pr_url() -> None:
@@ -251,12 +251,12 @@ def test_parse_jira_issue_code_accepts_key() -> None:
 
 def test_parse_jira_issue_code_accepts_browse_url() -> None:
     """Parse a Jira issue key from a browse URL."""
-    assert parse_jira_issue_code("https://jira.kolesa-team.org/browse/ML-2100") == "ML-2100"
+    assert parse_jira_issue_code("https://jira.example-team.org/browse/ML-2100") == "ML-2100"
 
 
 def test_parse_jira_issue_code_rejects_invalid_value() -> None:
     """Reject an invalid Jira issue reference."""
-    assert parse_jira_issue_code("https://jira.kolesa-team.org/browse/ml") is None
+    assert parse_jira_issue_code("https://jira.example-team.org/browse/ml") is None
     assert parse_jira_issue_code("plain task") is None
 
 
@@ -416,7 +416,7 @@ def test_add_jira_issue_creates_task(
     client = TaskTrackerClient(mock_notion_client, mock_jira_client)
 
     result = client.add_jira_issue(
-        "https://jira.kolesa-team.org/browse/ML-2100",
+        "https://jira.example-team.org/browse/ML-2100",
         TaskOverrides(),
     )
     task = result.task
@@ -425,7 +425,7 @@ def test_add_jira_issue_creates_task(
     assert task.name == "Sync model registry"
     assert task.level == TaskLevel.MEDIUM
     assert task.status == TaskStatus.IN_REVIEW
-    assert task.url == "https://jira.kolesa-team.org/browse/ML-2100"
+    assert task.url == "https://jira.example-team.org/browse/ML-2100"
 
 
 def test_add_jira_issue_uses_issue_url_for_code_input(
@@ -437,7 +437,7 @@ def test_add_jira_issue_uses_issue_url_for_code_input(
 
     result = client.add_jira_issue("ML-2100", TaskOverrides())
 
-    assert result.task.url == "https://jira.kolesa-team.org/browse/ML-2100"
+    assert result.task.url == "https://jira.example-team.org/browse/ML-2100"
 
 
 def test_add_jira_issue_does_not_use_input_url(
@@ -461,7 +461,7 @@ def test_add_jira_issue_does_not_use_input_url(
     client = TaskTrackerClient(mock_notion_client, mock_jira_client)
 
     result = client.add_jira_issue(
-        "https://jira.kolesa-team.org/browse/ML-2100",
+        "https://jira.example-team.org/browse/ML-2100",
         TaskOverrides(),
     )
 
@@ -476,13 +476,13 @@ def test_add_jira_issue_returns_existing_task(
         id="existing",
         name="Existing issue",
         status=TaskStatus.TODO,
-        url="https://jira.kolesa-team.org/browse/ML-2100",
+        url="https://jira.example-team.org/browse/ML-2100",
     )
     notion_client = MockNotionClient(tasks=[existing])
     client = TaskTrackerClient(notion_client, mock_jira_client)
 
     result = client.add_jira_issue(
-        "https://jira.kolesa-team.org/browse/ML-2100",
+        "https://jira.example-team.org/browse/ML-2100",
         TaskOverrides(name="New name"),
     )
 
