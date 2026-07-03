@@ -94,6 +94,34 @@ def parse_github_pull_request_url(value: str) -> PullRequestRef | None:
     )
 
 
+def parse_jira_issue_code(value: str) -> str | None:
+    """Parse a Jira issue code from a URL or raw key."""
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    parsed = urlparse(normalized)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        parts = [part for part in parsed.path.split("/") if part]
+        if not parts:
+            return None
+        candidate = parts[-1]
+    else:
+        candidate = normalized
+
+    if not candidate or "-" not in candidate:
+        return None
+
+    project, number = candidate.rsplit("-", maxsplit=1)
+    if not project or not number.isdigit():
+        return None
+
+    if not project.replace("-", "").replace("_", "").isalnum():
+        return None
+
+    return candidate
+
+
 def is_git_host(host: str) -> bool:
     """Check if a hostname looks like GitHub or GitLab."""
     normalized = host.lower()

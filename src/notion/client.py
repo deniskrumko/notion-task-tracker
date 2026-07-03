@@ -194,7 +194,7 @@ class NotionClient(ABCNotionClient):
         )
         data_sources = database.get("data_sources", [])
         if not data_sources:
-            raise NotionError(f'Database "{self._database_id}" has no data sources.')
+            raise NotionError(f'Database "{self._database_id}" has no data sources')
 
         self._data_source_id = str(data_sources[0]["id"])
         return self._data_source_id
@@ -235,7 +235,7 @@ class NotionClient(ABCNotionClient):
             if view.get("name") == view_name:
                 return str(view["id"])
 
-        raise NotionError(f'View "{view_name}" was not found.')
+        raise NotionError(f'View "{view_name}" was not found')
 
     def close(self) -> None:
         """Close the underlying HTTP client."""

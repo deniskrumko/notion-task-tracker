@@ -14,8 +14,11 @@ from app.cli import (
     print_task_list,
     print_task_result,
     resolve_view_name,
+    run_command,
     task_badges,
 )
+from jira.mock import MockJiraClient
+from jira.resources import Issue, JiraConfig
 from notion.client import (
     NotionClient,
     NotionError,
@@ -40,6 +43,7 @@ from task_tracker.resources import (
     TaskOverrides,
     parse_date_offset,
     parse_github_pull_request_url,
+    parse_jira_issue_code,
 )
 
 
@@ -64,6 +68,10 @@ base_url = "https://api.notion.com/v1"
 api_token = "secret"
 api_version = "2022-06-28"
 
+[jira]
+base_url = "https://jira.kolesa-team.org/"
+api_token = "jira-secret"
+
 [database]
 id = "database-id"
 name = "Task Tracker"
@@ -83,6 +91,9 @@ name = "Разобрать"
     assert config.notion.base_url == "https://api.notion.com/v1"
     assert config.notion.api_token == "secret"
     assert config.notion.api_version == "2022-06-28"
+    assert config.jira is not None
+    assert config.jira.base_url == "https://jira.kolesa-team.org/"
+    assert config.jira.api_token == "jira-secret"
     assert config.database.id == "database-id"
     assert config.database.name == "Task Tracker"
     assert config.views["today"].name == "Сегодня"
@@ -125,6 +136,14 @@ def test_pr_command_accepts_force_flag() -> None:
 
     assert args.command == "pr"
     assert args.force is True
+
+
+def test_jira_command_accepts_url_or_code() -> None:
+    """Parse a Jira command input value."""
+    args = build_parser().parse_args(["jira", "ML-2100"])
+
+    assert args.command == "jira"
+    assert args.value == "ML-2100"
 
 
 def test_list_command_accepts_view_key() -> None:
@@ -225,6 +244,22 @@ def test_parse_github_pull_request_url_rejects_non_pr_url() -> None:
     assert parse_github_pull_request_url("plain task") is None
 
 
+def test_parse_jira_issue_code_accepts_key() -> None:
+    """Parse a Jira issue key from plain text."""
+    assert parse_jira_issue_code("ML-2100") == "ML-2100"
+
+
+def test_parse_jira_issue_code_accepts_browse_url() -> None:
+    """Parse a Jira issue key from a browse URL."""
+    assert parse_jira_issue_code("https://jira.kolesa-team.org/browse/ML-2100") == "ML-2100"
+
+
+def test_parse_jira_issue_code_rejects_invalid_value() -> None:
+    """Reject an invalid Jira issue reference."""
+    assert parse_jira_issue_code("https://jira.kolesa-team.org/browse/ml") is None
+    assert parse_jira_issue_code("plain task") is None
+
+
 def test_parse_date_offset_accepts_iso_date() -> None:
     """Parse an ISO date value."""
     assert parse_date_offset("2026-06-11") == date(2026, 6, 11)
@@ -233,6 +268,67 @@ def test_parse_date_offset_accepts_iso_date() -> None:
 def test_parse_date_offset_accepts_relative_zero() -> None:
     """Parse a relative date offset."""
     assert parse_date_offset("0") == date.today()
+
+
+def test_task_status_from_jira_status_maps_known_values() -> None:
+    """Map Jira statuses to task tracker statuses."""
+    assert TaskStatus.from_jira_status("Open") == TaskStatus.TODO
+    assert TaskStatus.from_jira_status("Открыт") == TaskStatus.TODO
+    assert TaskStatus.from_jira_status("In Progress") == TaskStatus.IN_PROGRESS
+    assert TaskStatus.from_jira_status("В работе") == TaskStatus.IN_PROGRESS
+    assert TaskStatus.from_jira_status("Code Review") == TaskStatus.IN_REVIEW
+    assert TaskStatus.from_jira_status("Ревью") == TaskStatus.IN_REVIEW
+    assert TaskStatus.from_jira_status("Ready for test") == TaskStatus.IN_TEST
+    assert TaskStatus.from_jira_status("Готово к тесту") == TaskStatus.IN_TEST
+    assert TaskStatus.from_jira_status("Closed") == TaskStatus.DONE
+    assert TaskStatus.from_jira_status("Закрыт") == TaskStatus.DONE
+
+
+def test_task_status_from_jira_status_raises_for_unknown_value() -> None:
+    """Raise an error for an unsupported Jira status."""
+    with pytest.raises(ValueError, match="Invalid Jira status"):
+        TaskStatus.from_jira_status("Planning")
+
+
+def test_task_level_from_jira_priority_maps_known_values() -> None:
+    """Map Jira priorities to task tracker levels."""
+    assert TaskLevel.from_jira_priority("Minor") == TaskLevel.LOW
+    assert TaskLevel.from_jira_priority("Минор") == TaskLevel.LOW
+    assert TaskLevel.from_jira_priority("Тривиальная") == TaskLevel.LOW
+    assert TaskLevel.from_jira_priority("Низкий") == TaskLevel.LOW
+    assert TaskLevel.from_jira_priority("Major") == TaskLevel.MEDIUM
+    assert TaskLevel.from_jira_priority("Основной") == TaskLevel.MEDIUM
+    assert TaskLevel.from_jira_priority("Main") == TaskLevel.MEDIUM
+    assert TaskLevel.from_jira_priority("Critical") == TaskLevel.HIGH
+    assert TaskLevel.from_jira_priority("Блокер") == TaskLevel.HIGH
+    assert TaskLevel.from_jira_priority("High") == TaskLevel.HIGH
+
+
+def test_task_level_from_jira_priority_raises_for_unknown_value() -> None:
+    """Raise an error for an unsupported Jira priority."""
+    with pytest.raises(ValueError, match="Invalid Jira priority"):
+        TaskLevel.from_jira_priority("Normal")
+
+
+def test_task_level_from_value_accepts_prefixes() -> None:
+    """Parse task level from CLI input prefixes."""
+    assert TaskLevel.from_value("l") == TaskLevel.LOW
+    assert TaskLevel.from_value("med") == TaskLevel.MEDIUM
+    assert TaskLevel.from_value("high") == TaskLevel.HIGH
+
+
+def test_task_level_from_value_raises_for_unknown_value() -> None:
+    """Raise an error for an unsupported task level."""
+    with pytest.raises(ValueError, match="Invalid level"):
+        TaskLevel.from_value("urgent")
+    with pytest.raises(ValueError, match="Invalid level"):
+        TaskLevel.from_value(" ")
+
+
+def test_task_status_from_value_accepts_test_shortcuts() -> None:
+    """Parse IN_TEST task status shortcuts."""
+    assert TaskStatus.from_value("it") == TaskStatus.IN_TEST
+    assert TaskStatus.from_value("test") == TaskStatus.IN_TEST
 
 
 def test_build_task_applies_defaults() -> None:
@@ -310,6 +406,103 @@ def test_add_auto_creates_regular_task(mock_notion_client: MockNotionClient) -> 
     assert task.level == TaskLevel.LOW
     assert task.url is None
     assert mock_notion_client.tasks == [task]
+
+
+def test_add_jira_issue_creates_task(
+    mock_notion_client: MockNotionClient,
+    mock_jira_client: MockJiraClient,
+) -> None:
+    """Create a Jira-based task from issue metadata."""
+    client = TaskTrackerClient(mock_notion_client, mock_jira_client)
+
+    result = client.add_jira_issue(
+        "https://jira.kolesa-team.org/browse/ML-2100",
+        TaskOverrides(),
+    )
+    task = result.task
+
+    assert result.created is True
+    assert task.name == "Sync model registry"
+    assert task.level == TaskLevel.MEDIUM
+    assert task.status == TaskStatus.IN_REVIEW
+    assert task.url == "https://jira.kolesa-team.org/browse/ML-2100"
+
+
+def test_add_jira_issue_uses_issue_url_for_code_input(
+    mock_notion_client: MockNotionClient,
+    mock_jira_client: MockJiraClient,
+) -> None:
+    """Create a Jira-based task with issue URL when input is only a code."""
+    client = TaskTrackerClient(mock_notion_client, mock_jira_client)
+
+    result = client.add_jira_issue("ML-2100", TaskOverrides())
+
+    assert result.task.url == "https://jira.kolesa-team.org/browse/ML-2100"
+
+
+def test_add_jira_issue_does_not_use_input_url(
+    mock_notion_client: MockNotionClient,
+) -> None:
+    """Create a Jira-based task without falling back to input URL."""
+    mock_jira_client = MockJiraClient(
+        [
+            Issue(
+                raw={
+                    "key": "ML-2100",
+                    "fields": {
+                        "summary": "Sync model registry",
+                        "status": {"name": "Code Review"},
+                        "priority": {"name": "Major"},
+                    },
+                },
+            )
+        ]
+    )
+    client = TaskTrackerClient(mock_notion_client, mock_jira_client)
+
+    result = client.add_jira_issue(
+        "https://jira.kolesa-team.org/browse/ML-2100",
+        TaskOverrides(),
+    )
+
+    assert result.task.url is None
+
+
+def test_add_jira_issue_returns_existing_task(
+    mock_jira_client: MockJiraClient,
+) -> None:
+    """Return an existing Jira-based task when URL already exists."""
+    existing = Task(
+        id="existing",
+        name="Existing issue",
+        status=TaskStatus.TODO,
+        url="https://jira.kolesa-team.org/browse/ML-2100",
+    )
+    notion_client = MockNotionClient(tasks=[existing])
+    client = TaskTrackerClient(notion_client, mock_jira_client)
+
+    result = client.add_jira_issue(
+        "https://jira.kolesa-team.org/browse/ML-2100",
+        TaskOverrides(name="New name"),
+    )
+
+    assert result.created is False
+    assert result.task == existing
+
+
+def test_run_command_adds_jira_issue(
+    mock_notion_client: MockNotionClient,
+    mock_jira_client: MockJiraClient,
+) -> None:
+    """Run the Jira CLI command through the command dispatcher."""
+    args = build_parser().parse_args(["jira", "ML-2100"])
+    client = TaskTrackerClient(mock_notion_client, mock_jira_client)
+
+    result = run_command(client, args, build_config())
+
+    assert result.created is True
+    assert result.task.name == "Sync model registry"
+    assert result.task.status == TaskStatus.IN_REVIEW
 
 
 def test_add_auto_creates_pull_request_task(mock_notion_client: MockNotionClient) -> None:
@@ -401,7 +594,7 @@ def test_delete_task_raises_error_for_missing_id() -> None:
     """Raise an error when deleting a missing task ID."""
     client = TaskTrackerClient(MockNotionClient())
 
-    with pytest.raises(ValueError, match='Task "missing" was not found.'):
+    with pytest.raises(ValueError, match='Task "missing" was not found'):
         client.delete_task("missing")
 
 
@@ -566,7 +759,7 @@ def test_notion_client_raises_error_for_missing_view() -> None:
     )
     client = NotionClient(http_client, "database-id", "2022-06-28")
 
-    with pytest.raises(NotionError, match='View "missing" was not found.'):
+    with pytest.raises(NotionError, match='View "missing" was not found'):
         client.list_tasks_by_view("missing")
 
 
@@ -708,6 +901,10 @@ def build_config(views: dict[str, ViewConfig] | None = None) -> TaskTrackerConfi
             base_url="https://api.notion.com/v1",
             api_token="secret",
             api_version="2025-09-03",
+        ),
+        jira=JiraConfig(
+            base_url="https://jira.example.com/rest/api/2",
+            api_token="secret",
         ),
         database=DatabaseConfig(id="database-id", name="Task Tracker"),
         views=views or {},

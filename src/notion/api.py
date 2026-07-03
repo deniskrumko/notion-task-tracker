@@ -159,6 +159,6 @@ def find_database_id(client: httpx.Client, database_name: str) -> str:
                 return str(database["id"])
 
         if not data.get("has_more"):
-            raise NotionError(f'Database "{database_name}" was not found.')
+            raise NotionError(f'Database "{database_name}" was not found')
 
         cursor = data.get("next_cursor")

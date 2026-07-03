@@ -3,6 +3,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
+from jira.resources import JiraConfig
+
 
 class TaskLevel(StrEnum):
     """Task priority level in the Notion tracker."""
@@ -10,6 +12,35 @@ class TaskLevel(StrEnum):
     LOW = "Low"
     MEDIUM = "Medium"
     HIGH = "High"
+
+    @classmethod
+    def from_value(cls, value: str) -> "TaskLevel":
+        """Parse a task level from CLI input."""
+        normalized = value.strip().lower()
+        if normalized:
+            for level in cls:
+                if level.value.lower().startswith(normalized):
+                    return level
+
+        allowed = ", ".join(level.value for level in cls)
+        raise ValueError(f"Invalid level {value!r}. Allowed values: {allowed}")
+
+    @classmethod
+    def from_jira_priority(cls, priority: str) -> "TaskLevel":
+        """Map a Jira priority name to a task level."""
+        normalized = priority.strip().lower()
+
+        priority_patterns: dict[TaskLevel, tuple[str, ...]] = {
+            cls.LOW: ("минор", "тривиал", "low", "низк", "minor"),
+            cls.MEDIUM: ("medium", "основной", "main", "major"),
+            cls.HIGH: ("крит", "блок", "high", "crit", "block"),
+        }
+        for task_level, patterns in priority_patterns.items():
+            if any(pattern in normalized for pattern in patterns):
+                return task_level
+
+        allowed = ", ".join(level.value for level in cls)
+        raise ValueError(f"Invalid Jira priority {priority!r}. Allowed task levels: {allowed}")
 
 
 class TaskStatus(StrEnum):
@@ -19,10 +50,12 @@ class TaskStatus(StrEnum):
     PLANNING = "Planning"
     IN_PROGRESS = "In progress"
     IN_REVIEW = "In review"
+    IN_TEST = "In test"
     DONE = "Done"
 
     @classmethod
     def from_value(cls, value: str) -> "TaskStatus":
+        """Parse a task status from CLI input."""
         value = value.strip().lower()
 
         shortcuts: dict[str, TaskStatus] = {
@@ -31,6 +64,8 @@ class TaskStatus(StrEnum):
             "p": cls.PLANNING,
             "ip": cls.IN_PROGRESS,
             "ir": cls.IN_REVIEW,
+            "it": cls.IN_TEST,
+            "test": cls.IN_TEST,
             "d": cls.DONE,
         }
 
@@ -42,7 +77,26 @@ class TaskStatus(StrEnum):
                 return status
 
         allowed = ", ".join(status.value for status in cls)
-        raise ValueError(f"Invalid status {value!r}. Allowed values: {allowed}.")
+        raise ValueError(f"Invalid status {value!r}. Allowed values: {allowed}")
+
+    @classmethod
+    def from_jira_status(cls, status: str) -> "TaskStatus":
+        """Map a Jira status name to a task status."""
+        normalized = status.strip().lower()
+
+        status_patterns: dict[TaskStatus, tuple[str, ...]] = {
+            cls.TODO: ("open", "открыт"),
+            cls.IN_PROGRESS: ("progress", "работ"),
+            cls.IN_REVIEW: ("review", "ревью"),
+            cls.IN_TEST: ("test", "тест", "ready", "готово"),
+            cls.DONE: ("close", "закрыт"),
+        }
+        for task_status, patterns in status_patterns.items():
+            if any(pattern in normalized for pattern in patterns):
+                return task_status
+
+        allowed = ", ".join(status.value for status in cls)
+        raise ValueError(f"Invalid Jira status {status!r}. Allowed task statuses: {allowed}")
 
 
 class NotionConfig(BaseModel):
@@ -72,6 +126,7 @@ class TaskTrackerConfig(BaseModel):
 
     notion: NotionConfig
     database: DatabaseConfig
+    jira: JiraConfig | None = None
     views: dict[str, ViewConfig] = Field(default_factory=dict)
 
 

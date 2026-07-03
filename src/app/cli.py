@@ -1,11 +1,13 @@
 import argparse
 import tomllib
+from contextlib import nullcontext
 from pathlib import Path
 
 from rich.console import Console, Group
 from rich.table import Table
 from rich.text import Text
 
+from jira.client import JiraClient
 from notion.client import NotionClient, NotionError
 from notion.resources import Task, TaskTrackerConfig
 from task_tracker.client import TaskTrackerClient
@@ -30,8 +32,12 @@ def main() -> int:
     try:
         config = load_config()
         with NotionClient.from_config(config) as notion_client:
-            task_tracker_client = TaskTrackerClient(notion_client)
-            result = run_command(task_tracker_client, args, config)
+            jira_context = (
+                JiraClient.from_config(config) if args.command == "jira" else nullcontext()
+            )
+            with jira_context as jira_client:
+                task_tracker_client = TaskTrackerClient(notion_client, jira_client)
+                result = run_command(task_tracker_client, args, config)
     except (NotionError, ValueError) as exc:
         error_console.print(str(exc), style="bold red")
         return 1
@@ -50,6 +56,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_common_flags(subparsers.add_parser("pr", help="Add GitHub pull request task"))
     subparsers.choices["pr"].add_argument("url")
+
+    add_common_flags(subparsers.add_parser("jira", help="Add Jira issue task"))
+    subparsers.choices["jira"].add_argument("value")
 
     delete_parser = subparsers.add_parser("delete", help="Delete task by internal ID")
     delete_parser.add_argument("task_ids", nargs="+")
@@ -96,8 +105,12 @@ def run_command(
         overrides = parse_task_overrides(args)
         pull_request = parse_github_pull_request_url(args.url)
         if pull_request is None:
-            raise ValueError("Expected a GitHub pull request URL.")
+            raise ValueError("Expected a GitHub pull request URL")
         return task_tracker_client.add_pull_request(pull_request, overrides, force=args.force)
+
+    if args.command == "jira":
+        overrides = parse_task_overrides(args)
+        return task_tracker_client.add_jira_issue(args.value, overrides, force=args.force)
 
     if args.command == "delete":
         return task_tracker_client.delete_tasks(args.task_ids)
@@ -239,6 +252,7 @@ def status_style(status: str) -> str:
         "Planning": "bold black on magenta",
         "In progress": "bold white on blue",
         "In review": "bold black on yellow",
+        "In test": "bold black on cyan",
         "Done": "bold black on green",
     }.get(status, "bold white on cyan")
 
