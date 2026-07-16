@@ -52,6 +52,7 @@ class TaskStatus(StrEnum):
     IN_REVIEW = "In review"
     IN_TEST = "In test"
     DONE = "Done"
+    WONT_DO = "Won't do"
 
     @classmethod
     def from_value(cls, value: str) -> "TaskStatus":
@@ -67,6 +68,8 @@ class TaskStatus(StrEnum):
             "it": cls.IN_TEST,
             "test": cls.IN_TEST,
             "d": cls.DONE,
+            "w": cls.WONT_DO,
+            "wont": cls.WONT_DO,
         }
 
         if value in shortcuts:
