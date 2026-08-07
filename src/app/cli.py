@@ -51,8 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="notion-task-tracker")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    add_common_flags(subparsers.add_parser("add", help="Add task with auto-detection"))
-    subparsers.choices["add"].add_argument("value", nargs="+")
+    add_parser = subparsers.add_parser("add", help="Add task with auto-detection")
+    add_common_flags(add_parser)
+    add_parser.add_argument("value", nargs="+")
+
+    today_parser = subparsers.add_parser("today", help="Add task due today")
+    add_common_flags(today_parser)
+    today_parser.add_argument("value", nargs="+")
+    today_parser.set_defaults(until="today")
 
     add_common_flags(subparsers.add_parser("pr", help="Add GitHub pull request task"))
     subparsers.choices["pr"].add_argument("url")
@@ -101,7 +107,7 @@ def run_command(
     config: TaskTrackerConfig,
 ) -> TaskAddResult | TaskDeleteResult | list[Task]:
     """Execute the requested CLI command."""
-    if args.command == "add":
+    if args.command in {"add", "today"}:
         overrides = parse_task_overrides(args)
         return task_tracker_client.add_auto(" ".join(args.value), overrides, force=args.force)
 

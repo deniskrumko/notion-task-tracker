@@ -130,6 +130,15 @@ def test_add_command_accepts_force_flag() -> None:
     assert args.force is True
 
 
+def test_today_command_sets_until_today() -> None:
+    """Parse the today command with today's due date."""
+    args = build_parser().parse_args(["today", "hello", "world"])
+
+    assert args.command == "today"
+    assert args.value == ["hello", "world"]
+    assert args.until == "today"
+
+
 def test_pr_command_accepts_force_flag() -> None:
     """Parse force flag for pull request task creation."""
     args = build_parser().parse_args(["pr", "--force", "https://github.com/a/b/pull/1"])
@@ -432,6 +441,20 @@ def test_add_auto_creates_regular_task(mock_notion_client: MockNotionClient) -> 
     assert task.level == TaskLevel.LOW
     assert task.url is None
     assert mock_notion_client.tasks == [task]
+
+
+def test_run_command_adds_task_due_today(
+    mock_notion_client: MockNotionClient,
+) -> None:
+    """Run the today CLI command with today's due date."""
+    args = build_parser().parse_args(["today", "Write", "docs"])
+    client = TaskTrackerClient(mock_notion_client)
+
+    result = run_command(client, args, build_config())
+
+    assert result.created is True
+    assert result.task.name == "Write docs"
+    assert result.task.until == date.today()
 
 
 def test_add_jira_issue_creates_task(
