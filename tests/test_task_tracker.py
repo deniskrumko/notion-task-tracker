@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from io import StringIO
 
 import httpx
@@ -268,6 +268,32 @@ def test_parse_date_offset_accepts_iso_date() -> None:
 def test_parse_date_offset_accepts_relative_zero() -> None:
     """Parse a relative date offset."""
     assert parse_date_offset("0") == date.today()
+
+
+@pytest.mark.parametrize(
+    ("value", "offset"),
+    [
+        ("today", 0),
+        ("td", 0),
+        ("tomorrow", 1),
+        ("tommorow", 1),
+        ("tm", 1),
+        ("yesterday", -1),
+        ("ys", -1),
+        ("nextweek", 7),
+        ("nw", 7),
+        ("nextmonth", 30),
+        ("nm", 30),
+    ],
+)
+def test_parse_date_offset_accepts_named_dates(value: str, offset: int) -> None:
+    """Parse named dates and their abbreviations."""
+    assert parse_date_offset(value) == date.today() + timedelta(days=offset)
+
+
+def test_parse_date_offset_normalizes_named_dates() -> None:
+    """Parse named dates regardless of surrounding whitespace and case."""
+    assert parse_date_offset("  TD  ") == date.today()
 
 
 def test_task_status_from_jira_status_maps_known_values() -> None:

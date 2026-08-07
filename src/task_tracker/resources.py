@@ -5,6 +5,20 @@ from pydantic import BaseModel, field_validator
 
 from notion.resources import Task
 
+DATE_OFFSETS = {
+    "today": 0,
+    "td": 0,
+    "tomorrow": 1,
+    "tommorow": 1,
+    "tm": 1,
+    "yesterday": -1,
+    "ys": -1,
+    "nextweek": 7,
+    "nw": 7,
+    "nextmonth": 30,
+    "nm": 30,
+}
+
 
 class PullRequestRef(BaseModel):
     """Pull request reference parsed from a Git hosting URL."""
@@ -58,11 +72,16 @@ class TaskDeleteResult(BaseModel):
 
 
 def parse_date_offset(value: str) -> date:
-    """Parse ISO date or relative day offset."""
+    """Parse a named date, ISO date, or relative day offset."""
+    normalized = value.strip().lower()
+    offset = DATE_OFFSETS.get(normalized)
+    if offset is not None:
+        return date.today() + timedelta(days=offset)
+
     try:
-        offset = int(value)
+        offset = int(normalized)
     except ValueError:
-        return date.fromisoformat(value)
+        return date.fromisoformat(normalized)
     return date.today() + timedelta(days=offset)
 
 

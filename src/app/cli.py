@@ -76,7 +76,11 @@ def add_common_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-n", "--name")
     parser.add_argument("-l", "--level")
     parser.add_argument("-s", "--status")
-    parser.add_argument("-u", "--until")
+    parser.add_argument(
+        "-u",
+        "--until",
+        help="ISO date, day offset, or named date (for example: today, tm, nw)",
+    )
     parser.add_argument("--url")
     parser.add_argument("--force", action="store_true")
 
